@@ -176,7 +176,10 @@
 
       transitionBanner.hidden = state !== 'transition';
       if (state === 'transition') {
-        const suffix = snap.phaseName.startsWith('Praça') ? 'iluminada!' : 'iluminado!';
+        const suffix =
+          snap.phaseName.startsWith('Praça') || snap.phaseName.startsWith('Estação')
+            ? 'iluminada!'
+            : 'iluminado!';
         transitionText.textContent = `${snap.phaseName} ${suffix}`;
       }
 
@@ -242,24 +245,68 @@
     }
     global.addEventListener('resize', handleResize);
 
+    const btnStart = byId('btn-start');
+    const btnTranquil = byId('btn-tranquil');
+    const btnScheduleOpen = byId('btn-schedule-open');
+    const btnReplay = byId('btn-replay');
+
+    function unlockAudioOnGesture() {
+      sound.unlock();
+    }
+
+    // Synchronous Web Audio unlock on first pointerdown/touchstart/click
+    [btnStart, btnTranquil, canvas, btnSkip, btnReplay, btnScheduleOpen].forEach((el) => {
+      if (!el) return;
+      el.addEventListener('pointerdown', unlockAudioOnGesture, { passive: true });
+      el.addEventListener('touchstart', unlockAudioOnGesture, { passive: true });
+    });
+
     // Opening actions
-    byId('btn-start').addEventListener('click', () => {
+    btnStart.addEventListener('click', () => {
+      sound.unlock();
       game.startGame({ tranquil: false });
     });
 
-    byId('btn-tranquil').addEventListener('click', () => {
+    btnTranquil.addEventListener('click', () => {
+      sound.unlock();
       game.startGame({ tranquil: true });
     });
 
     // Tranquil skip button
     btnSkip.addEventListener('click', () => {
+      sound.unlock();
       game.skipPhase();
     });
 
-    // Sound toggle
-    btnSound.addEventListener('click', () => {
+    // Sound toggle: first gesture only unlocks & keeps sound ON; subsequent clicks toggle
+    let soundBtnFirstUnlock = false;
+    let soundBtnFirstUnlockAt = 0;
+
+    function handleSoundBtnPointerDown() {
+      if (!sound.hasAttemptedUnlock()) {
+        soundBtnFirstUnlock = true;
+        soundBtnFirstUnlockAt = Date.now();
+      }
       sound.unlock();
-      sound.toggle();
+    }
+
+    btnSound.addEventListener('pointerdown', handleSoundBtnPointerDown, { passive: true });
+    btnSound.addEventListener('touchstart', handleSoundBtnPointerDown, { passive: true });
+    btnSound.addEventListener('pointercancel', () => {
+      soundBtnFirstUnlock = false;
+    });
+
+    btnSound.addEventListener('click', () => {
+      const wasFirstGesture =
+        !sound.hasAttemptedUnlock() ||
+        (soundBtnFirstUnlock && Date.now() - soundBtnFirstUnlockAt < 1500);
+      soundBtnFirstUnlock = false;
+      sound.unlock();
+      if (wasFirstGesture) {
+        sound.setEnabled(true);
+      } else {
+        sound.toggle();
+      }
       updateSoundButton();
     });
 
@@ -318,6 +365,9 @@
           r: t.screenR,
           lit: t.lit,
         }));
+      },
+      audio: function () {
+        return sound.getDebugInfo();
       },
     };
   }

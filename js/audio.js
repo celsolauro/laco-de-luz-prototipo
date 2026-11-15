@@ -21,16 +21,46 @@
       this.noiseBuffer = null;
       this.enabled = true;
       this.unlocked = false;
+      this.unlockAttempted = false;
       this.padStarted = false;
+      this.effectsPlayed = 0;
       this.noteStep = 0;
+      this._silentPlayed = false;
     }
 
     isEnabled() {
       return this.enabled;
     }
 
+    hasAttemptedUnlock() {
+      return this.unlockAttempted;
+    }
+
+    isUnlocked() {
+      return Boolean(this.unlocked && this.ctx && this.ctx.state === 'running');
+    }
+
+    getDebugInfo() {
+      const state = this.ctx ? this.ctx.state : 'uninitialized';
+      return {
+        state: state,
+        enabled: this.enabled,
+        unlocked: this.isUnlocked(),
+        effectsPlayed: this.effectsPlayed,
+      };
+    }
+
     setEnabled(next) {
       this.enabled = Boolean(next);
+      if (this.enabled) {
+        if (!this.ctx) {
+          this.unlock();
+        } else if (this.ctx.state !== 'running') {
+          this._resumeContext();
+        } else if (!this.padStarted) {
+          this._startAmbientPad();
+        }
+      }
       if (this.ctx && this.masterGain) {
         const now = this.ctx.currentTime;
         this.masterGain.gain.cancelScheduledValues(now);
@@ -45,7 +75,9 @@
 
     unlock() {
       const AudioCtx = global.AudioContext || global.webkitAudioContext;
-      if (!AudioCtx) return;
+      if (!AudioCtx) return Promise.resolve();
+
+      this.unlockAttempted = true;
 
       if (!this.ctx) {
         this.ctx = new AudioCtx();
@@ -53,16 +85,78 @@
         this.masterGain.gain.value = this.enabled ? 0.85 : 0;
         this.masterGain.connect(this.ctx.destination);
         this.noiseBuffer = this._createNoiseBuffer();
+        if ('onstatechange' in this.ctx) {
+          this.ctx.onstatechange = () => {
+            this._syncState();
+          };
+        }
       }
 
-      if (this.ctx.state === 'suspended') {
-        this.ctx.resume().catch(function () {});
+      // Play a 1-sample silent buffer synchronously inside the user gesture
+      // (required by iOS Safari to move Web Audio out of hardware-muted state).
+      if (!this._silentPlayed || this.ctx.state !== 'running') {
+        try {
+          const sampleRate = this.ctx.sampleRate || 22050;
+          const silentBuf = this.ctx.createBuffer(1, 1, sampleRate);
+          const silentSrc = this.ctx.createBufferSource();
+          silentSrc.buffer = silentBuf;
+          silentSrc.connect(this.ctx.destination);
+          silentSrc.start(0);
+          this._silentPlayed = true;
+        } catch (_) {}
       }
 
-      this.unlocked = true;
-      if (!this.padStarted) {
-        this._startAmbientPad();
+      if (this.ctx.state === 'running') {
+        this._syncState();
+        return Promise.resolve();
       }
+
+      return this._resumeContext();
+    }
+
+    _syncState() {
+      if (!this.ctx) return;
+      if (this.ctx.state === 'running') {
+        this.unlocked = true;
+        if (this.enabled && !this.padStarted) {
+          this._startAmbientPad();
+        }
+      }
+    }
+
+    _resumeContext() {
+      if (!this.ctx) return Promise.resolve();
+      if (this.ctx.state === 'running') {
+        this._syncState();
+        return Promise.resolve();
+      }
+      try {
+        const res = this.ctx.resume();
+        if (res && typeof res.then === 'function') {
+          return res
+            .then(() => {
+              this._syncState();
+            })
+            .catch(() => {});
+        }
+      } catch (_) {}
+      return Promise.resolve();
+    }
+
+    _playWhenRunning(fn) {
+      if (!this.ctx || !this.enabled) return;
+      if (this.ctx.state === 'running') {
+        this._syncState();
+        fn();
+        this.effectsPlayed += 1;
+        return;
+      }
+      this._resumeContext().then(() => {
+        if (this.ctx && this.ctx.state === 'running' && this.enabled) {
+          fn();
+          this.effectsPlayed += 1;
+        }
+      });
     }
 
     _createNoiseBuffer() {
@@ -77,7 +171,7 @@
     }
 
     _startAmbientPad() {
-      if (!this.ctx || this.padStarted) return;
+      if (!this.ctx || this.ctx.state !== 'running' || !this.enabled || this.padStarted) return;
       this.padStarted = true;
 
       const now = this.ctx.currentTime;
@@ -203,72 +297,73 @@
     }
 
     playLightUp(wraps, combo) {
-      if (!this.ctx || !this.enabled) return;
-      if (this.ctx.state === 'suspended') {
-        this.ctx.resume().catch(function () {});
-      }
+      this._playWhenRunning(() => {
+        const now = this.ctx.currentTime;
+        const stepOffset = (this.noteStep + Math.max(0, combo - 1)) % VIOLA_SCALE.length;
+        const baseFreq = VIOLA_SCALE[stepOffset];
+        this.noteStep = (this.noteStep + 1) % VIOLA_SCALE.length;
 
-      const now = this.ctx.currentTime;
-      const stepOffset = (this.noteStep + Math.max(0, combo - 1)) % VIOLA_SCALE.length;
-      const baseFreq = VIOLA_SCALE[stepOffset];
-      this.noteStep = (this.noteStep + 1) % VIOLA_SCALE.length;
+        this._playSleighBell(now, Math.min(1.4, 0.85 + wraps * 0.15));
+        this._playViolaPluck(baseFreq, now + 0.015, 0.55, 0.16);
 
-      this._playSleighBell(now, Math.min(1.4, 0.85 + wraps * 0.15));
-      this._playViolaPluck(baseFreq, now + 0.015, 0.55, 0.16);
-
-      // Extra harmonic fifth when wrapped multiple times
-      if (wraps >= 2) {
-        const fifthFreq = baseFreq * 1.498;
-        this._playViolaPluck(fifthFreq, now + 0.065, 0.65, 0.12);
-      }
-      if (wraps >= 3) {
-        this._playViolaPluck(baseFreq * 2, now + 0.115, 0.65, 0.10);
-      }
+        // Extra harmonic fifth when wrapped multiple times
+        if (wraps >= 2) {
+          const fifthFreq = baseFreq * 1.498;
+          this._playViolaPluck(fifthFreq, now + 0.065, 0.65, 0.12);
+        }
+        if (wraps >= 3) {
+          this._playViolaPluck(baseFreq * 2, now + 0.115, 0.65, 0.10);
+        }
+      });
     }
 
     playWhoosh() {
-      if (!this.ctx || !this.enabled || !this.noiseBuffer) return;
-      const now = this.ctx.currentTime;
-      const noise = this.ctx.createBufferSource();
-      noise.buffer = this.noiseBuffer;
+      if (!this.noiseBuffer) return;
+      this._playWhenRunning(() => {
+        const now = this.ctx.currentTime;
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
 
-      const filter = this.ctx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(420, now);
-      filter.frequency.exponentialRampToValueAtTime(190, now + 0.12);
-      filter.Q.value = 1.8;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(420, now);
+        filter.frequency.exponentialRampToValueAtTime(190, now + 0.12);
+        filter.Q.value = 1.8;
 
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.linearRampToValueAtTime(0.045, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(0.045, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
 
-      noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.masterGain);
-      noise.start(now);
-      noise.stop(now + 0.14);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        noise.start(now);
+        noise.stop(now + 0.14);
+      });
     }
 
     playPhaseComplete() {
-      if (!this.ctx || !this.enabled) return;
-      const now = this.ctx.currentTime;
-      const chord = [293.66, 369.99, 440.0, 587.33]; // D4, F#4, A4, D5
-      chord.forEach((f, idx) => {
-        this._playViolaPluck(f, now + idx * 0.07, 0.9, 0.14);
+      this._playWhenRunning(() => {
+        const now = this.ctx.currentTime;
+        const chord = [293.66, 369.99, 440.0, 587.33]; // D4, F#4, A4, D5
+        chord.forEach((f, idx) => {
+          this._playViolaPluck(f, now + idx * 0.07, 0.9, 0.14);
+        });
+        this._playSleighBell(now + 0.14, 1.15);
       });
-      this._playSleighBell(now + 0.14, 1.15);
     }
 
     playFinale() {
-      if (!this.ctx || !this.enabled) return;
-      const now = this.ctx.currentTime;
-      const chord = [293.66, 369.99, 440.0, 587.33, 739.99];
-      chord.forEach((f, idx) => {
-        this._playViolaPluck(f, now + idx * 0.085, 1.35, 0.14);
+      this._playWhenRunning(() => {
+        const now = this.ctx.currentTime;
+        const chord = [293.66, 369.99, 440.0, 587.33, 739.99];
+        chord.forEach((f, idx) => {
+          this._playViolaPluck(f, now + idx * 0.085, 1.35, 0.14);
+        });
+        this._playSleighBell(now + 0.08, 1.2);
+        this._playSleighBell(now + 0.34, 1.0);
       });
-      this._playSleighBell(now + 0.08, 1.2);
-      this._playSleighBell(now + 0.34, 1.0);
     }
   }
 

@@ -84,11 +84,11 @@
         drawCoverImage(ctx, backdropImg, CARD_WIDTH, CARD_HEIGHT);
       }
 
-      // 2. Warm star glow on the sheriff star of Fase 1 (or high focal glow)
+      // 2. Warm star glow on the sheriff star of Fase 1 (Estação Natal)
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const starX = CARD_WIDTH * 0.54;
-      const starY = CARD_HEIGHT * 0.415;
+      const starX = CARD_WIDTH * 0.70;
+      const starY = CARD_HEIGHT * 0.145;
       const starGlow = ctx.createRadialGradient(starX, starY, 10, starX, starY, 260);
       starGlow.addColorStop(0, 'rgba(255, 240, 185, 0.55)');
       starGlow.addColorStop(0.35, 'rgba(245, 190, 75, 0.24)');
@@ -100,12 +100,12 @@
       ctx.restore();
 
       // 3. Top and bottom cinematic midnight-blue gradients for WCAG legibility
-      const topGrad = ctx.createLinearGradient(0, 0, 0, 560);
+      const topGrad = ctx.createLinearGradient(0, 0, 0, 420);
       topGrad.addColorStop(0, 'rgba(5, 11, 28, 0.94)');
-      topGrad.addColorStop(0.58, 'rgba(6, 13, 31, 0.78)');
+      topGrad.addColorStop(0.58, 'rgba(6, 13, 31, 0.74)');
       topGrad.addColorStop(1, 'rgba(6, 13, 31, 0)');
       ctx.fillStyle = topGrad;
-      ctx.fillRect(0, 0, CARD_WIDTH, 560);
+      ctx.fillRect(0, 0, CARD_WIDTH, 420);
 
       const botGrad = ctx.createLinearGradient(0, 1400, 0, CARD_HEIGHT);
       botGrad.addColorStop(0, 'rgba(6, 13, 31, 0)');
@@ -144,18 +144,18 @@
       ctx.fillStyle = 'rgba(245, 224, 174, 0.88)';
       ctx.font = '600 26px "Source Sans 3", sans-serif';
       const kicker = cfg.programa.toUpperCase();
-      ctx.fillText(kicker, CARD_WIDTH / 2, 128);
+      ctx.fillText(kicker, CARD_WIDTH / 2, 92);
 
       // Thin ornamental line under kicker
       ctx.strokeStyle = 'rgba(242, 198, 109, 0.5)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(CARD_WIDTH / 2 - 190, 162);
-      ctx.lineTo(CARD_WIDTH / 2 - 22, 162);
-      ctx.moveTo(CARD_WIDTH / 2 + 22, 162);
-      ctx.lineTo(CARD_WIDTH / 2 + 190, 162);
+      ctx.moveTo(CARD_WIDTH / 2 - 190, 122);
+      ctx.lineTo(CARD_WIDTH / 2 - 22, 122);
+      ctx.moveTo(CARD_WIDTH / 2 + 22, 122);
+      ctx.lineTo(CARD_WIDTH / 2 + 190, 122);
       ctx.stroke();
-      drawFourPointStar(ctx, CARD_WIDTH / 2, 162, 10, 3, '#f2c66d');
+      drawFourPointStar(ctx, CARD_WIDTH / 2, 122, 10, 3, '#f2c66d');
 
       // Main Headline: "Acendi a Estação Natal · [N] luzes"
       const headline = `Acendi a Estação Natal · ${lightsLit} luzes`;
@@ -175,12 +175,12 @@
       ctx.shadowBlur = 18;
       ctx.shadowOffsetY = 4;
 
-      const goldGrad = ctx.createLinearGradient(0, 210, 0, 275);
+      const goldGrad = ctx.createLinearGradient(0, 144, 0, 208);
       goldGrad.addColorStop(0, '#fff3c4');
       goldGrad.addColorStop(0.5, '#f2c66d');
       goldGrad.addColorStop(1, '#d69c38');
       ctx.fillStyle = goldGrad;
-      ctx.fillText(headline, CARD_WIDTH / 2, 240);
+      ctx.fillText(headline, CARD_WIDTH / 2, 174);
       ctx.restore();
 
       // Campaign line
@@ -188,8 +188,8 @@
       ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
       ctx.shadowBlur = 12;
       ctx.fillStyle = '#f8f2e4';
-      ctx.font = '600 34px "Source Sans 3", sans-serif';
-      ctx.fillText(cfg.linha, CARD_WIDTH / 2, 314);
+      ctx.font = '600 32px "Source Sans 3", sans-serif';
+      ctx.fillText(cfg.linha, CARD_WIDTH / 2, 224);
       ctx.restore();
 
       // 6. Footer lockup

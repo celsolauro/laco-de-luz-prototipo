@@ -366,7 +366,7 @@
         if (pop.active) continue;
         pop.active = true;
         pop.x = clamp(x, 62, this.width - 62);
-        pop.y = clamp(y - 16, 84, this.height - 80);
+        pop.y = clamp(y - 16, 122, this.height - 80);
         pop.text = text;
         pop.subtext = subtext || '';
         pop.life = 1;
@@ -456,12 +456,13 @@
     _enterFinale() {
       this.lasso.setEnabled(false);
       this._setState('finale');
-      this.phaseIndex = 0; // Highlight Boulevard tree + Estação + Maria Fumaça
+      this.phaseIndex = 0; // Highlight Estação Natal tree + Maria Fumaça
       this.phaseReveal = 1;
       this._rebuildBackdropCache();
       this.maskDirty = true;
       this.finaleTimer = this.reducedMotion ? 1.5 : 2.5;
       this.trainProgress = 0;
+      for (let i = 0; i < this.steamPuffs.length; i++) this.steamPuffs[i].active = false;
       this.sound.playFinale();
       this._emitUI();
     }
@@ -599,15 +600,7 @@
         if (!this.reducedMotion && Math.random() < dt * 12) {
           this._spawnSteamPuff();
         }
-        for (let i = 0; i < this.steamPuffs.length; i++) {
-          const s = this.steamPuffs[i];
-          if (!s.active) continue;
-          s.x += s.vx * dt;
-          s.y += s.vy * dt;
-          s.r += dt * 7;
-          s.life -= dt * 0.9;
-          if (s.life <= 0) s.active = false;
-        }
+        this._updateSteamPuffs(dt);
 
         if (this.finaleTimer <= 0) {
           this._showCardScreen();
@@ -615,17 +608,31 @@
       }
     }
 
+    _updateSteamPuffs(dt) {
+      for (let i = 0; i < this.steamPuffs.length; i++) {
+        const s = this.steamPuffs[i];
+        if (!s.active) continue;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.r += dt * 7;
+        s.life -= dt * 0.9;
+        if (s.life <= 0) s.active = false;
+      }
+    }
+
     _spawnSteamPuff() {
       const trainPt = this._getTrainPosition();
+      const sScale = trainPt.scale;
       for (let i = 0; i < this.steamPuffs.length; i++) {
         const s = this.steamPuffs[i];
         if (s.active) continue;
         s.active = true;
-        s.x = trainPt.x + 12;
-        s.y = trainPt.y - 11;
-        s.vx = -18 - Math.random() * 14;
-        s.vy = -12 - Math.random() * 14;
-        s.r = 2.5 + Math.random() * 2;
+        // Smokestack top is at (-95 * sScale, -32 * sScale) relative to train center
+        s.x = trainPt.x - 95 * sScale;
+        s.y = trainPt.y - 32 * sScale;
+        s.vx = (16 + Math.random() * 14) * sScale;
+        s.vy = (-11 - Math.random() * 12) * sScale;
+        s.r = (2.4 + Math.random() * 2) * sScale;
         s.life = 1;
         return;
       }
@@ -633,13 +640,16 @@
 
     _getTrainPosition() {
       const { x, y, w, h } = this.drawRect;
-      // Glides gently across the far boulevard railway horizon corridor
-      const progress = this.reducedMotion ? 0.55 : this.trainProgress;
-      const startX = x + w * 0.22;
-      const endX = x + w * 0.78;
+      const scale = clamp(w / 450, 0.78, 1.35);
+
+      // Finale crossing from right to left across the lit Estação Natal lawn
+      const progress = this.reducedMotion ? 0.5 : this.trainProgress;
+      const startX = x + w * 0.84;
+      const endX = x + w * 0.16;
       return {
         x: startX + (endX - startX) * progress,
-        y: y + h * 0.145,
+        y: y + h * 0.825,
+        scale: scale,
       };
     }
 
@@ -661,12 +671,12 @@
       mctx.fillRect(0, 0, w, h);
 
       if (this.state === 'opening') {
-        // Soft subtle spotlight on tree & boulevard in opening backdrop
+        // Soft subtle spotlight on tree & station in opening backdrop
         mctx.globalCompositeOperation = 'destination-out';
         const { x, y, w: dw, h: dh } = this.drawRect;
-        const cx = x + dw * 0.54;
-        const cy = y + dh * 0.58;
-        const rad = Math.min(dw, dh) * 0.42;
+        const cx = x + dw * 0.56;
+        const cy = y + dh * 0.48;
+        const rad = Math.min(dw, dh) * 0.48;
         const g = mctx.createRadialGradient(cx, cy, rad * 0.1, cx, cy, rad);
         g.addColorStop(0, 'rgba(0, 0, 0, 0.35)');
         g.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -756,7 +766,7 @@
         }
       }
 
-      // 5. Finale star radiance + Maria Fumaça silhouette
+      // 5. Finale star radiance + faithful Mogiana 236 crossing
       if (this.state === 'finale') {
         this._renderFinaleDetails(ctx);
       }
@@ -882,12 +892,295 @@
       ctx.restore();
     }
 
+    _drawMariaFumaca(ctx, cx, railY, scale, alpha, animateRods) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Steam puffs behind train
+      for (let i = 0; i < this.steamPuffs.length; i++) {
+        const s = this.steamPuffs[i];
+        if (!s.active) continue;
+        ctx.fillStyle = `rgba(236, 234, 228, ${0.32 * s.life})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.translate(cx, railY);
+      ctx.scale(scale, scale);
+
+      // Soft ground shadow under consist
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0.8, 114, 2.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Warm golden headlamp beam projecting left (forward direction of Mogiana 236)
+      const beam = ctx.createLinearGradient(-103, -19.5, -182, -14);
+      beam.addColorStop(0, 'rgba(255, 240, 178, 0.58)');
+      beam.addColorStop(1, 'rgba(255, 220, 120, 0)');
+      ctx.fillStyle = beam;
+      ctx.beginPath();
+      ctx.moveTo(-103, -20.5);
+      ctx.lineTo(-182, -29);
+      ctx.lineTo(-182, -7);
+      ctx.lineTo(-103, -18.5);
+      ctx.closePath();
+      ctx.fill();
+
+      const drawSpokedWheel = (wx, wy, rad, spokeCount, redHub) => {
+        ctx.save();
+        ctx.translate(wx, wy);
+        ctx.fillStyle = '#15181e';
+        ctx.beginPath();
+        ctx.arc(0, 0, rad, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Radial spokes
+        ctx.strokeStyle = '#9aa3ae';
+        ctx.lineWidth = 0.65;
+        const rot = animateRods ? -this.time * 5.2 : 0;
+        for (let k = 0; k < spokeCount; k++) {
+          const ang = rot + (k * Math.PI * 2) / spokeCount;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(ang) * (rad - 0.6), Math.sin(ang) * (rad - 0.6));
+          ctx.stroke();
+        }
+
+        // Silver/white tire rim
+        ctx.strokeStyle = '#e2e7ed';
+        ctx.lineWidth = 1.05;
+        ctx.beginPath();
+        ctx.arc(0, 0, rad - 0.3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Red-orange hub & counterweight accent
+        ctx.fillStyle = redHub ? '#e0502a' : '#7b8490';
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(1.1, rad * 0.32), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      };
+
+      // --- 1. PASSENGER CAR (vermelho-vinho + faixa amarela + CMEF) ---
+      // Underframe & bogies
+      ctx.fillStyle = '#1a1c21';
+      ctx.fillRect(17, -6.5, 96, 2.5);
+      drawSpokedWheel(25, -2.7, 2.7, 6, false);
+      drawSpokedWheel(33, -2.7, 2.7, 6, false);
+      drawSpokedWheel(97, -2.7, 2.7, 6, false);
+      drawSpokedWheel(105, -2.7, 2.7, 6, false);
+
+      // Burgundy/wine car body
+      ctx.fillStyle = '#7e2026';
+      ctx.fillRect(17, -23.5, 96, 17);
+      // Curved dark roof + clerestory
+      ctx.fillStyle = '#2d2326';
+      ctx.beginPath();
+      ctx.moveTo(15.5, -23.5);
+      ctx.quadraticCurveTo(65, -27.5, 114.5, -23.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#3c3034';
+      ctx.fillRect(26, -27.2, 78, 2);
+
+      // Gold trim pinstripes
+      ctx.fillStyle = '#e5bd64';
+      ctx.fillRect(17, -23.5, 96, 0.8);
+      ctx.fillRect(17, -7.2, 96, 0.8);
+
+      // CMEF lettering on upper burgundy fascia
+      ctx.font = '700 4.2px "Source Sans 3", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#f5de9c';
+      ctx.fillText('CMEF', 65, -21.1);
+
+      // Yellow window band
+      ctx.fillStyle = '#e8c468';
+      ctx.fillRect(21.5, -19, 87, 8);
+
+      // Warm lit passenger windows inside yellow band
+      for (let wIdx = 0; wIdx < 9; wIdx++) {
+        const winX = 24 + wIdx * 9.3;
+        ctx.fillStyle = '#332419';
+        ctx.fillRect(winX, -17.8, 6.2, 5.5);
+        ctx.fillStyle = '#ffd984';
+        ctx.fillRect(winX + 0.6, -17.2, 5, 4.3);
+      }
+
+      // End doors/platforms
+      ctx.fillStyle = '#5a161b';
+      ctx.fillRect(17.5, -22, 3.2, 14.5);
+      ctx.fillRect(109.3, -22, 3.2, 14.5);
+
+      // Coupler tender <-> passenger car
+      ctx.fillStyle = '#1d2026';
+      ctx.fillRect(14, -6.5, 3, 1.8);
+
+      // --- 2. TENDER (cinza com letreiro branco MOGIANA) ---
+      drawSpokedWheel(-24, -2.7, 2.7, 6, false);
+      drawSpokedWheel(-16, -2.7, 2.7, 6, false);
+      drawSpokedWheel(0, -2.7, 2.7, 6, false);
+      drawSpokedWheel(8, -2.7, 2.7, 6, false);
+
+      // Coal heap + thin top rail
+      ctx.fillStyle = '#15181d';
+      ctx.beginPath();
+      ctx.moveTo(-29, -19);
+      ctx.quadraticCurveTo(-8, -24.5, 12, -19);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#6f7782';
+      ctx.lineWidth = 0.7;
+      ctx.strokeRect(-29.5, -21.5, 42, 2.5);
+
+      // Grey tender tank body
+      ctx.fillStyle = '#5b636e';
+      ctx.fillRect(-31, -19, 45, 13);
+      ctx.fillStyle = '#707985';
+      ctx.fillRect(-31, -19, 45, 1.4);
+      ctx.fillStyle = '#252930';
+      ctx.fillRect(-31, -6.8, 45, 1.4);
+
+      // White MOGIANA lettering
+      ctx.font = '700 6.5px "Source Sans 3", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('MOGIANA', -8.5, -12.4);
+
+      // Coupler locomotive <-> tender
+      ctx.fillStyle = '#1d2026';
+      ctx.fillRect(-34.5, -6.5, 3.5, 1.8);
+
+      // --- 3. LOCOMOTIVE MOGIANA 236 (preto/cinza-chumbo + detalhes vermelho-alaranjados) ---
+      // Red-orange chassis frame beam
+      ctx.fillStyle = '#d94c27';
+      ctx.fillRect(-102, -8.8, 67, 2.8);
+      ctx.fillStyle = '#181b21';
+      ctx.fillRect(-102, -6.3, 67, 1.3);
+
+      // Cowcatcher (red-orange pilot beam + dark bars)
+      ctx.fillStyle = '#d94c27';
+      ctx.fillRect(-104, -9, 4, 3.4);
+      ctx.beginPath();
+      ctx.moveTo(-102, -6);
+      ctx.lineTo(-114, -0.8);
+      ctx.lineTo(-102, -0.8);
+      ctx.closePath();
+      ctx.fillStyle = '#22262e';
+      ctx.fill();
+      ctx.strokeStyle = '#df542d';
+      ctx.lineWidth = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(-102, -5.8);
+      ctx.lineTo(-114, -0.8);
+      ctx.moveTo(-102, -3.5);
+      ctx.lineTo(-109, -0.8);
+      ctx.stroke();
+
+      // Smokebox (front black)
+      ctx.fillStyle = '#181b21';
+      ctx.fillRect(-101, -21, 17, 12.2);
+      // Boiler (charcoal lead-grey)
+      ctx.fillStyle = '#2c323b';
+      ctx.fillRect(-84, -21, 27, 12.2);
+      // Boiler metallic top highlight & bands
+      ctx.fillStyle = '#47505e';
+      ctx.fillRect(-100, -21, 43, 1.3);
+      ctx.fillStyle = '#191c22';
+      ctx.fillRect(-76, -21, 1, 12.2);
+      ctx.fillRect(-66, -21, 1, 12.2);
+
+      // Smokestack (flared top)
+      ctx.fillStyle = '#1a1d23';
+      ctx.fillRect(-96.5, -31.5, 4.4, 10.5);
+      ctx.beginPath();
+      ctx.moveTo(-98.2, -32.2);
+      ctx.lineTo(-90.4, -32.2);
+      ctx.lineTo(-92, -29.8);
+      ctx.lineTo(-96.6, -29.8);
+      ctx.closePath();
+      ctx.fill();
+
+      // Sand & steam domes + brass bell
+      ctx.fillStyle = '#2b313a';
+      ctx.fillRect(-80.5, -23.2, 6, 2.4);
+      ctx.beginPath();
+      ctx.arc(-77.5, -23.2, 3, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(-64.5, -23.6, 6.8, 2.8);
+      ctx.beginPath();
+      ctx.arc(-61.1, -23.6, 3.4, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = '#e5b95c';
+      ctx.beginPath();
+      ctx.arc(-70.5, -22.5, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Headlamp
+      ctx.fillStyle = '#22262e';
+      ctx.fillRect(-104, -21.5, 3.2, 3.8);
+      ctx.fillStyle = '#fff6cc';
+      ctx.beginPath();
+      ctx.arc(-104.2, -19.6, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Cab (charcoal + overhanging roof + warm window + crisp 236)
+      ctx.fillStyle = '#22272f';
+      ctx.fillRect(-57, -26.2, 22, 17.4);
+      ctx.fillStyle = '#14171c';
+      ctx.fillRect(-58.8, -27.8, 25.5, 2);
+      // Warm cab window
+      ctx.fillStyle = '#f5c76b';
+      ctx.fillRect(-53.5, -23.5, 7, 5.5);
+      ctx.strokeStyle = '#14171c';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(-53.5, -23.5, 7, 5.5);
+
+      // Number plate 236
+      ctx.fillStyle = '#171a20';
+      ctx.fillRect(-54.8, -16.5, 16.5, 6.5);
+      ctx.strokeStyle = '#adb5c0';
+      ctx.lineWidth = 0.55;
+      ctx.strokeRect(-54.8, -16.5, 16.5, 6.5);
+      ctx.font = '700 6px "Source Sans 3", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('236', -46.5, -13.1);
+
+      // Locomotive wheels (pilot truck + 3 large spoked drivers + trailing wheel)
+      drawSpokedWheel(-96, -3, 2.9, 6, true);
+      drawSpokedWheel(-86.5, -3, 2.9, 6, true);
+      drawSpokedWheel(-75, -5.2, 5.2, 8, true);
+      drawSpokedWheel(-63, -5.2, 5.2, 8, true);
+      drawSpokedWheel(-51, -5.2, 5.2, 8, true);
+      drawSpokedWheel(-39.5, -3.2, 3.2, 6, true);
+
+      // Red-orange connecting rod (biela) linking driving wheels
+      const rodDx = animateRods ? Math.cos(this.time * 5.2) * 1.4 : 0.8;
+      const rodDy = animateRods ? Math.sin(this.time * 5.2) * 1.4 : 0.6;
+      ctx.strokeStyle = '#e5562e';
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-81, -5.8);
+      ctx.lineTo(-75 + rodDx, -5.2 + rodDy);
+      ctx.lineTo(-51 + rodDx, -5.2 + rodDy);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
     _renderFinaleDetails(ctx) {
       const { x, y, w, h } = this.drawRect;
 
-      // 1. Blazing sheriff star on the Boulevard tree
-      const starX = x + w * 0.54;
-      const starY = y + h * 0.415;
+      // 1. Blazing sheriff star on the Estação Natal tree
+      const starX = x + w * 0.70;
+      const starY = y + h * 0.145;
       const pulse = this.reducedMotion ? 1 : 0.92 + 0.14 * Math.sin(this.time * 5);
 
       ctx.save();
@@ -917,81 +1210,9 @@
       }
       ctx.restore();
 
-      // 2. Tasteful vector Maria Fumaça gliding across the distant horizon boulevard
+      // 2. Faithful Mogiana 236 + tender MOGIANA + CMEF car crossing at finale
       const trainPt = this._getTrainPosition();
-      ctx.save();
-
-      // Steam puffs
-      for (let i = 0; i < this.steamPuffs.length; i++) {
-        const s = this.steamPuffs[i];
-        if (!s.active) continue;
-        ctx.fillStyle = `rgba(235, 232, 225, ${0.26 * s.life})`;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Warm golden headlamp beam
-      const beam = ctx.createLinearGradient(trainPt.x + 22, trainPt.y - 4, trainPt.x + 88, trainPt.y + 4);
-      beam.addColorStop(0, 'rgba(255, 236, 170, 0.55)');
-      beam.addColorStop(1, 'rgba(255, 220, 120, 0)');
-      ctx.fillStyle = beam;
-      ctx.beginPath();
-      ctx.moveTo(trainPt.x + 20, trainPt.y - 5);
-      ctx.lineTo(trainPt.x + 88, trainPt.y - 14);
-      ctx.lineTo(trainPt.x + 88, trainPt.y + 8);
-      ctx.lineTo(trainPt.x + 20, trainPt.y - 2);
-      ctx.closePath();
-      ctx.fill();
-
-      // Locomotive + tender silhouette (dark iron + warm brass trim)
-      ctx.translate(trainPt.x, trainPt.y);
-      // Passenger/tender car behind
-      ctx.fillStyle = '#191418';
-      ctx.strokeStyle = '#d8a648';
-      ctx.lineWidth = 1;
-      ctx.fillRect(-34, -8, 22, 10);
-      ctx.strokeRect(-34, -8, 22, 10);
-      // Warm lit carriage windows
-      ctx.fillStyle = '#ffcf6e';
-      ctx.fillRect(-31, -6, 4, 4);
-      ctx.fillRect(-24, -6, 4, 4);
-      ctx.fillRect(-17, -6, 4, 4);
-
-      // Locomotive boiler + cab
-      ctx.fillStyle = '#151218';
-      ctx.fillRect(-9, -10, 9, 12); // cab
-      ctx.fillRect(0, -7, 19, 9); // boiler
-      // Cowcatcher
-      ctx.beginPath();
-      ctx.moveTo(19, 2);
-      ctx.lineTo(24, 2);
-      ctx.lineTo(19, -3);
-      ctx.closePath();
-      ctx.fill();
-      // Smokestack
-      ctx.fillRect(12, -13, 3.5, 6);
-      // Brass dome & trim
-      ctx.fillStyle = '#e6b85c';
-      ctx.fillRect(4, -9, 4, 2.5);
-      ctx.fillRect(-9, -11, 10, 1.5);
-      // Headlamp glow
-      ctx.fillStyle = '#fff5cc';
-      ctx.beginPath();
-      ctx.arc(19.5, -4.5, 2, 0, Math.PI * 2);
-      ctx.fill();
-      // Wheels
-      ctx.fillStyle = '#2d2326';
-      ctx.strokeStyle = '#c89a44';
-      ctx.lineWidth = 0.8;
-      [-28, -18, -4, 5, 14].forEach((wx) => {
-        ctx.beginPath();
-        ctx.arc(wx, 2.5, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      });
-
-      ctx.restore();
+      this._drawMariaFumaca(ctx, trainPt.x, trainPt.y, trainPt.scale, 0.96, !this.reducedMotion);
     }
   }
 
